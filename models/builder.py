@@ -2,11 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.init_func import init_weight
-from utils.load_utils import load_pretrain
+from DFormerv2.utils.init_func import init_weight
+from DFormerv2.utils.load_utils import load_pretrain
 from functools import partial
 
-from utils.engine.logger import get_logger
+from DFormerv2.utils.engine.logger import get_logger
 import warnings
 
 # from mmcv.cnn import MODELS as MMCV_MODELS
