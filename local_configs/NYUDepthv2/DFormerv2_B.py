@@ -2,7 +2,7 @@ from .._base_.datasets.NYUDepthv2 import *
 
 """ Settings for network, this would be different for each kind of model"""
 C.backbone = "DFormerv2_B"  # Remember change the path below.
-C.pretrained_model = "checkpoints/pretrained/DFormerv2_Base_pretrained.pth"
+C.pretrained_model = None #"checkpoints/pretrained/DFormerv2_Base_pretrained.pth"
 C.decoder = "ham"
 C.decoder_embed_dim = 512
 C.optimizer = "AdamW"
