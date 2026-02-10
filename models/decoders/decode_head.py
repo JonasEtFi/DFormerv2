@@ -7,7 +7,7 @@ from mmengine.model.base_module import BaseModule
 # , auto_fp16, force_fp32
 
 # from mmseg.core import build_pixel_sampler
-from mmseg.ops import resize
+from DFormerv2.mmseg.ops import resize
 from ..builder import build_loss
 from ..losses import accuracy
 
