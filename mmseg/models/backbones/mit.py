@@ -8,8 +8,22 @@ import torch.utils.checkpoint as cp
 from mmcv.cnn import Conv2d, build_activation_layer, build_norm_layer
 from mmcv.cnn.bricks.drop import build_dropout
 from mmcv.cnn.bricks.transformer import MultiheadAttention
-from mmcv.cnn.utils.weight_init import constant_init, normal_init, trunc_normal_init
 from mmcv.runner import BaseModule, ModuleList, Sequential
+
+try:
+    from mmcv.cnn.utils.weight_init import constant_init, normal_init, trunc_normal_init
+except ModuleNotFoundError:
+    try:
+        from mmengine.model.weight_init import constant_init, normal_init, trunc_normal_init
+    except ModuleNotFoundError:
+        from mmengine.model.weight_init import constant_init, normal_init
+        from torch.nn.init import trunc_normal_ as _torch_trunc_normal_
+
+        def trunc_normal_init(module, mean=0, std=1, bias=0):
+            if hasattr(module, "weight") and module.weight is not None:
+                _torch_trunc_normal_(module.weight, mean=mean, std=std)
+            if bias is not None and hasattr(module, "bias") and module.bias is not None:
+                nn.init.constant_(module.bias, bias)
 
 from ..builder import BACKBONES
 from ..utils import PatchEmbed, nchw_to_nlc, nlc_to_nchw
