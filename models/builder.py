@@ -106,10 +106,11 @@ class EncoderDecoder(nn.Module):
         else:
             norm_cfg = dict(type="BN", requires_grad=True)
 
+        modal_in_chans = int(getattr(cfg, "modal_in_chans", 1))
         if cfg.drop_path_rate is not None:
-            self.backbone = backbone(drop_path_rate=cfg.drop_path_rate, norm_cfg=norm_cfg)
+            self.backbone = backbone(drop_path_rate=cfg.drop_path_rate, norm_cfg=norm_cfg, modal_in_chans=modal_in_chans)
         else:
-            self.backbone = backbone(drop_path_rate=0.1, norm_cfg=norm_cfg)
+            self.backbone = backbone(drop_path_rate=0.1, norm_cfg=norm_cfg, modal_in_chans=modal_in_chans)
 
         self.aux_head = None
 

@@ -510,6 +510,7 @@ class dformerv2(nn.Module):
         layerscales=[False, False, False, False],
         layer_init_values=1e-6,
         norm_eval=True,
+        modal_in_chans=1,
     ):
         super().__init__()
         self.out_indices = out_indices
@@ -519,11 +520,20 @@ class dformerv2(nn.Module):
         self.num_features = embed_dims[-1]
         self.mlp_ratios = mlp_ratios
         self.norm_eval = norm_eval
+        self.modal_in_chans = int(modal_in_chans)
 
         # patch embedding
         self.patch_embed = PatchEmbed(
             in_chans=3, embed_dim=embed_dims[0], norm_layer=norm_layer if self.patch_norm else None
         )
+        if self.modal_in_chans > 1:
+            self.modal_proj = nn.Conv2d(self.modal_in_chans, 1, kernel_size=1, bias=True)
+            with torch.no_grad():
+                self.modal_proj.weight.zero_()
+                self.modal_proj.bias.zero_()
+                self.modal_proj.weight[0, 0, 0, 0] = 1.0
+        else:
+            self.modal_proj = None
 
         # drop path rate
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
@@ -621,7 +631,10 @@ class dformerv2(nn.Module):
         # rgb input
         x = self.patch_embed(x)
         # depth input
-        x_e = x_e[:, 0, :, :].unsqueeze(1)
+        if self.modal_proj is not None:
+            x_e = self.modal_proj(x_e)
+        else:
+            x_e = x_e[:, 0:1, :, :]
 
         outs = []
 
