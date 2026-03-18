@@ -87,14 +87,17 @@ class EncoderDecoder(nn.Module):
             self.channels = [32, 64, 128, 256]
 
         elif cfg.backbone == "DFormerv2_L":
+            print("Using DFormerv2_L backbone")
             from .encoders.DFormerv2 import DFormerv2_L as backbone
 
             self.channels = [112, 224, 448, 640]
         elif cfg.backbone == "DFormerv2_B":
+            print("Using DFormerv2_B backbone")
             from .encoders.DFormerv2 import DFormerv2_B as backbone
 
             self.channels = [80, 160, 320, 512]
         elif cfg.backbone == "DFormerv2_S":
+            print("Using DFormerv2_S backbone")
             from .encoders.DFormerv2 import DFormerv2_S as backbone
 
             self.channels = [64, 128, 256, 512]

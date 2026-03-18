@@ -1,7 +1,7 @@
 from .._base_.datasets.NYUDepthv2 import *
 
 """ Settings for network, this would be different for each kind of model"""
-C.backbone = "DFormer-Small"  # Remember change the path below.
+C.backbone = "DFormer_Small"  # Remember change the path below.
 C.pretrained_model = "checkpoints/pretrained/DFormer_Small.pth.tar"
 C.decoder = "ham"
 C.decoder_embed_dim = 512
