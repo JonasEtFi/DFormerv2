@@ -118,6 +118,8 @@ class GeoPriorGen(nn.Module):
         angle = 1.0 / (10000 ** torch.linspace(0, 1, embed_dim // num_heads // 2))
         angle = angle.unsqueeze(-1).repeat(1, 2).flatten()
         self.weight = nn.Parameter(torch.ones(2, 1, 1, 1), requires_grad=True)
+        self.capture_debug = False
+        self.last_debug = None
         decay = torch.log(
             1 - 2 ** (-initial_value - heads_range * torch.arange(num_heads, dtype=torch.float) / num_heads)
         )
@@ -202,10 +204,20 @@ class GeoPriorGen(nn.Module):
             sin = sin.reshape(HW_tuple[0], HW_tuple[1], -1)
             cos = torch.cos(index[:, None] * self.angle[None, :])
             cos = cos.reshape(HW_tuple[0], HW_tuple[1], -1)
-            mask = self.generate_pos_decay(HW_tuple[0], HW_tuple[1])
-
             mask_d = self.generate_depth_decay(HW_tuple[0], HW_tuple[1], depth_map)
-            mask = self.weight[0] * mask + self.weight[1] * mask_d
+            pos_mask = self.generate_pos_decay(HW_tuple[0], HW_tuple[1])
+            pos_term = self.weight[0] * pos_mask
+            depth_term = self.weight[1] * mask_d
+            mask = pos_term + depth_term
+
+            if self.capture_debug:
+                self.last_debug = {
+                    "depth_logits": depth_term.detach(),
+                    "grid_h": HW_tuple[0],
+                    "grid_w": HW_tuple[1],
+                }
+            else:
+                self.last_debug = None
 
             geo_prior = ((sin, cos), mask)
 
@@ -282,6 +294,9 @@ class Full_GSA(nn.Module):
         self.factor = value_factor
         self.embed_dim = embed_dim
         self.num_heads = num_heads
+        self.capture_debug = False
+        self.geo_debug = None
+        self.last_debug = None
         self.head_dim = self.embed_dim * self.factor // num_heads
         self.key_dim = self.embed_dim // num_heads
         self.scaling = self.key_dim**-0.5
@@ -316,6 +331,21 @@ class Full_GSA(nn.Module):
         vr = v.reshape(bsz, h, w, self.num_heads, -1).permute(0, 3, 1, 2, 4)
         vr = vr.flatten(2, 3)
         qk_mat = qr @ kr.transpose(-1, -2)
+        if self.capture_debug:
+            depth_logits = None
+            if self.geo_debug is not None:
+                depth_logits = self.geo_debug.get("depth_logits")
+            if depth_logits is not None:
+                self.last_debug = {
+                    "content_logits": qk_mat.detach(),
+                    "depth_logits": depth_logits.detach(),
+                    "grid_h": h,
+                    "grid_w": w,
+                }
+            else:
+                self.last_debug = None
+        else:
+            self.last_debug = None
         qk_mat = qk_mat + mask
         qk_mat = torch.softmax(qk_mat, -1)
         output = torch.matmul(qk_mat, vr)
@@ -406,6 +436,8 @@ class RGBD_Block(nn.Module):
         self.cnn_pos_encode = DWConv2d(embed_dim, 3, 1, 1)
         # the function to generate the geometry prior for the current block
         self.Geo = GeoPriorGen(embed_dim, num_heads, init_value, heads_range)
+        self.capture_debug = False
+        self.last_attention_debug = None
 
         if layerscale:
             self.gamma_1 = nn.Parameter(layer_init_values * torch.ones(1, 1, 1, embed_dim), requires_grad=True)
@@ -415,13 +447,17 @@ class RGBD_Block(nn.Module):
         x = x + self.cnn_pos_encode(x)
         b, h, w, d = x.size()
 
+        self.Geo.capture_debug = self.capture_debug and (not split_or_not)
         geo_prior = self.Geo((h, w), x_e, split_or_not=split_or_not)
+        self.Attention.capture_debug = self.capture_debug and (not split_or_not)
+        self.Attention.geo_debug = self.Geo.last_debug
         if self.layerscale:
             x = x + self.drop_path(self.gamma_1 * self.Attention(self.layer_norm1(x), geo_prior, split_or_not))
             x = x + self.drop_path(self.gamma_2 * self.ffn(self.layer_norm2(x)))
         else:
             x = x + self.drop_path(self.Attention(self.layer_norm1(x), geo_prior, split_or_not))
             x = x + self.drop_path(self.ffn(self.layer_norm2(x)))
+        self.last_attention_debug = self.Attention.last_debug if self.capture_debug else None
         return x
 
 
@@ -521,6 +557,8 @@ class dformerv2(nn.Module):
         self.mlp_ratios = mlp_ratios
         self.norm_eval = norm_eval
         self.modal_in_chans = int(modal_in_chans)
+        self.capture_attention_debug = False
+        self.last_attention_debug = None
 
         # patch embedding
         self.patch_embed = PatchEmbed(
@@ -640,7 +678,11 @@ class dformerv2(nn.Module):
 
         for i in range(self.num_layers):
             layer = self.layers[i]
+            if i == self.num_layers - 1 and len(layer.blocks) > 0:
+                layer.blocks[-1].capture_debug = self.capture_attention_debug
             x_out, x = layer(x, x_e)
+            if i == self.num_layers - 1 and len(layer.blocks) > 0:
+                self.last_attention_debug = layer.blocks[-1].last_attention_debug
             if i in self.out_indices:
                 if i != 0:
                     x_out = self.extra_norms[i - 1](x_out)
@@ -648,6 +690,11 @@ class dformerv2(nn.Module):
                 outs.append(out)
 
         return tuple(outs)
+
+    def set_attention_debug(self, enabled: bool) -> None:
+        self.capture_attention_debug = bool(enabled)
+        if not enabled:
+            self.last_attention_debug = None
 
     def train(self, mode=True):
         """Convert the model into training mode while keep normalization layer
